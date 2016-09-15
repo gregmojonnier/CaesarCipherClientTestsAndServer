@@ -80,7 +80,7 @@ def test_ShiftOfZero_ServerRespondsWithSecondWordUnchanged(CaesarCipherServerFix
     except socket.error, e:
         pass
 
-    assert response == 'unchanged_message'
+    assert response == 'unchanged_message '
 
 def test_ShiftOfOneSingleCharMessage_ServerRespondsWithCharShiftedOne(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
@@ -92,7 +92,7 @@ def test_ShiftOfOneSingleCharMessage_ServerRespondsWithCharShiftedOne(CaesarCiph
     except socket.error, e:
         pass
 
-    assert response == 'b'
+    assert response == 'b '
 
 def test_ShiftOfOneMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShiftedOne(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
@@ -104,7 +104,7 @@ def test_ShiftOfOneMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShifte
     except socket.error, e:
         pass
 
-    assert response == 'bcd'
+    assert response == 'bcd '
 
 
 def test_ShiftOfTwoMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShiftedTwo(CaesarCipherServerFixture):
@@ -117,5 +117,16 @@ def test_ShiftOfTwoMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShifte
     except socket.error, e:
         pass
 
-    assert response == 'cde'
+    assert response == 'cde '
 
+def test_MultipleShiftOfOneCharMessages_RespondsWithCharsShiftedOneWithTrailingSpaces(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'1 a 1 b ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'b c '

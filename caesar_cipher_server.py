@@ -1,5 +1,6 @@
 import socket
 import select
+import enum
 
 
 def CreateCaesarCipherMessage(message, shift):
@@ -8,17 +9,26 @@ def CreateCaesarCipherMessage(message, shift):
     for i in message:
         ret += chr(ord(i) + shift)
 
-    return ret.encode()
+    return ret
+
+class AwaitingState(enum.Enum):
+    ShiftAmount = 1
+    Message = 2
+    
+
 
 def handle_connection(conn, addr):
     try:
         conn.setblocking(0)
         print('connection from ', addr)
         waiting_for_shift = True
-        shift_amount = ''
         message = ''
         read_timeouts = 0
         inputs = [conn]
+
+        waiting_for = AwaitingState(AwaitingState.ShiftAmount)
+        incomplete_shift_amount = ''
+        incomplete_message = ''
         while True:
             print('about to select')
             readable, writable, exceptional = select.select(inputs, [], [], 2)
@@ -42,37 +52,42 @@ def handle_connection(conn, addr):
             full_data_string = data.decode()
             print('full msg', full_data_string, '\n')
 
-            if waiting_for_shift:
-                if ' ' not in full_data_string:
-                    print('waiting for a space still')
-                    shift_amount += full_data_string
-                    print('current shift ', shift_amount)
-                    continue
+            split_words = full_data_string.split(' ')
+            num_words = len(split_words)
+            print('split message ', split_words, '\n')
 
-                print('the split,', full_data_string.split(' '))
-                remaining_shift_data = full_data_string.split(' ')[0]
-                shift_amount += remaining_shift_data
+            complete_ciphers_to_send = []
+            for idx, word in enumerate(split_words):
+                word_followed_by_space = idx < num_words-1
+                if waiting_for == AwaitingState.ShiftAmount:
+                    incomplete_shift_amount += word
+                    if word_followed_by_space:
+                        if not incomplete_shift_amount.isnumeric():
+                            print('not numeric number given\n')
+                            conn.shutdown(socket.SHUT_RDWR)
+                            break
+                        waiting_for = AwaitingState.Message
+                elif waiting_for == AwaitingState.Message:
+                    incomplete_message += word
 
-                split_words = full_data_string.split(' ')
-                num_words = len(split_words)
-                if num_words > 1:
-                    message += split_words[1]
-                    if num_words > 2:
-                        # end of message
-                        res = CreateCaesarCipherMessage(message, int(shift_amount))
-                        conn.sendall(res)
-                        # todo handle remainder
+                    if word_followed_by_space:
+                        complete_ciphers_to_send.append(CreateCaesarCipherMessage(incomplete_message, int(incomplete_shift_amount)))
+                        print('recorded cipher, total', complete_ciphers_to_send)
 
-                print('parsed messae so far', message)
+                        waiting_for = AwaitingState.ShiftAmount
+                        # reset waits
+                        incomplete_shift_amount = ''
+                        incomplete_message = ''
 
-                if shift_amount.isnumeric():
-                    waiting_for_shift = False
-                else:
-                    print('not numeric number given\n')
-                    conn.shutdown(socket.SHUT_RDWR)
-                    break
-            else:
-                print('process message\n')
+            full_response_message = ''
+            for cipher in complete_ciphers_to_send:
+                full_response_message += cipher + ' '
+                print('appended to full message string, total', full_response_message)
+
+            if full_response_message:
+                print('sending full message')
+                conn.sendall(full_response_message.encode())
+
     except socket.timeout:
         print('Timed out')
     except Exception as e:
