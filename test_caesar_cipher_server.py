@@ -30,14 +30,14 @@ def CaesarCipherServerFixture(request):
     return t
 
 
-def test_ClientSendsTextWithosdfutTrailingSpace_ServerWillWaitForAdditionalMessages(CaesarCipherServerFixture):
+def test_ClientsFirstMessageHasNoTrailingSpace_ServerWillWaitForAdditionalMessages(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
-    two_second_timeout = 2
+    one_second_timeout = 1
     timed_out = False
 
     sock.sendall(b'text_without_a_trailing_space')
     sock.setblocking(0)
-    ready = select.select([sock], [], [], two_second_timeout)
+    ready = select.select([sock], [], [], one_second_timeout)
     if not ready[0]:
         timed_out = True
 
@@ -57,14 +57,65 @@ def test_ClientsFirstWordIsNotANumber_ServerClosesConnection(CaesarCipherServerF
     assert response == ''
 
 
-def test_ClientsFirstWordIsANumber_ServerRespondsWithMessage(CaesarCipherServerFixture):
+def test_ClientsFirstWordIsANumberAndSecondHasTrailingSpace_ServerRespondsWithMessage(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
     response = None
 
     try:
-        sock.sendall(b'32 message')
+        sock.sendall(b'666 message ')
         response = sock.recv(1024)
     except socket.error, e:
         pass
 
     assert response
+
+
+def test_ShiftOfZero_ServerRespondsWithSecondWordUnchanged(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'0 unchanged_message ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'unchanged_message'
+
+def test_ShiftOfOneSingleCharMessage_ServerRespondsWithCharShiftedOne(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'1 a ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'b'
+
+def test_ShiftOfOneMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShiftedOne(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'1 abc ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'bcd'
+
+
+def test_ShiftOfTwoMultipleCharsMessage_ServerRespondsWithSecondWordsCharsShiftedTwo(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'2 abc ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'cde'
+
