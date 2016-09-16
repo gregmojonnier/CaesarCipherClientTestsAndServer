@@ -2,12 +2,24 @@ import socket
 import select
 import enum
 
-
+LAST_ASCII_CHAR = 127
+FIRST_ASCII_CHAR = 0
 def CreateCaesarCipherMessage(message, shift):
     ret = ""
 
     for i in message:
-        ret += chr(ord(i) + shift)
+        print("cur", ord(i))
+        future_value = ord(i) + shift
+        print("future ", future_value)
+
+        if future_value > LAST_ASCII_CHAR:
+            future_value = (future_value - LAST_ASCII_CHAR) - 1
+            print("adjusted future ", future_value)
+        elif future_value < FIRST_ASCII_CHAR:
+            future_value = (future_value + LAST_ASCII_CHAR) + 1
+            print("adjusted future ", future_value)
+
+        ret += chr(future_value)
 
     return ret
 
@@ -57,21 +69,34 @@ def handle_connection(conn, addr):
             print('split message ', split_words, '\n')
 
             complete_ciphers_to_send = []
+            shift_amount = 0
             for idx, word in enumerate(split_words):
                 word_followed_by_space = idx < num_words-1
                 if waiting_for == AwaitingState.ShiftAmount:
                     incomplete_shift_amount += word
                     if word_followed_by_space:
-                        if not incomplete_shift_amount.isnumeric():
-                            print('not numeric number given\n')
-                            conn.shutdown(socket.SHUT_RDWR)
-                            break
+                        is_negative = incomplete_shift_amount.startswith('-')
+
+                        if not is_negative:
+                            if not incomplete_shift_amount.isnumeric():
+                                print('not numeric number given\n')
+                                conn.shutdown(socket.SHUT_RDWR)
+                                break
+                            shift_amount = int(incomplete_shift_amount)
+                        else:
+                            number_portion = incomplete_shift_amount[1:]
+                            if not number_portion.isnumeric():
+                                print('not numeric number given\n')
+                                conn.shutdown(socket.SHUT_RDWR)
+                                break
+                            shift_amount = -int(number_portion)
+                        
                         waiting_for = AwaitingState.Message
                 elif waiting_for == AwaitingState.Message:
                     incomplete_message += word
 
                     if word_followed_by_space:
-                        complete_ciphers_to_send.append(CreateCaesarCipherMessage(incomplete_message, int(incomplete_shift_amount)))
+                        complete_ciphers_to_send.append(CreateCaesarCipherMessage(incomplete_message, shift_amount))
                         print('recorded cipher, total', complete_ciphers_to_send)
 
                         waiting_for = AwaitingState.ShiftAmount

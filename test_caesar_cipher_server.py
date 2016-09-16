@@ -130,3 +130,64 @@ def test_MultipleShiftOfOneCharMessages_RespondsWithCharsShiftedOneWithTrailingS
         pass
 
     assert response == 'b c '
+
+def test_ShiftOfOneWithLastAsciiCharMessage_RespondsWithFirstAsciiChar(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'1 \x7f ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == '\x00 '
+
+def test_ShiftOfNegativeOneSingleCharMessage_ServerRespondsWithCharShiftedNegativeOne(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'-1 b ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'a '
+
+def test_ShiftOfNegativeOneWithFirstAsciiCharMessage_RespondsWithLastAsciiChar(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'-1 \x00 ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == '\x7f '
+
+def test_ShiftOfAsciiRange_RespondsWithSameMessage(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'128 abcdefghijklmnopqrstuvwxyz ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'abcdefghijklmnopqrstuvwxyz '
+
+def test_ShiftOfAsciiRangePlusOne_RespondsWithTheMessagePlusOne(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+
+    try:
+        sock.sendall(b'129 abcdefghijklmnopqrstuvwxyz ')
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'bcdefghijklmnopqrstuvwxyz{ '
+
