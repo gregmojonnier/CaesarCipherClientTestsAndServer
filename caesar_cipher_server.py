@@ -39,6 +39,8 @@ def handle_connection(conn, addr):
         inputs = [conn]
 
         waiting_for = AwaitingState(AwaitingState.ShiftAmount)
+        complete_ciphers_to_send = []
+        shift_amount = 0
         incomplete_shift_amount = ''
         incomplete_message = ''
         while True:
@@ -62,14 +64,12 @@ def handle_connection(conn, addr):
                 return
 
             full_data_string = data.decode()
-            print('full msg', full_data_string, '\n')
+            print('incoming message ', full_data_string, '\n')
 
             split_words = full_data_string.split(' ')
             num_words = len(split_words)
-            print('split message ', split_words, '\n')
+            print('split incoming message ', split_words, '\n')
 
-            complete_ciphers_to_send = []
-            shift_amount = 0
             for idx, word in enumerate(split_words):
                 word_followed_by_space = idx < num_words-1
                 if waiting_for == AwaitingState.ShiftAmount:
@@ -90,16 +90,20 @@ def handle_connection(conn, addr):
                                 conn.shutdown(socket.SHUT_RDWR)
                                 break
                             shift_amount = -int(number_portion)
+
+                        print('shift amount received', shift_amount)
                         
                         waiting_for = AwaitingState.Message
                 elif waiting_for == AwaitingState.Message:
                     incomplete_message += word
 
                     if word_followed_by_space:
+                        print('entire message received', incomplete_message)
                         complete_ciphers_to_send.append(CreateCaesarCipherMessage(incomplete_message, shift_amount))
                         print('recorded cipher, total', complete_ciphers_to_send)
 
                         waiting_for = AwaitingState.ShiftAmount
+                        shift_amount = 0
                         # reset waits
                         incomplete_shift_amount = ''
                         incomplete_message = ''
@@ -112,6 +116,7 @@ def handle_connection(conn, addr):
             if full_response_message:
                 print('sending full message')
                 conn.sendall(full_response_message.encode())
+                complete_ciphers_to_send = []
 
     except socket.timeout:
         print('Timed out')

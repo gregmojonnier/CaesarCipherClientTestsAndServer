@@ -2,6 +2,7 @@ import socket
 import select
 import time
 import pytest
+import string
 
 
 @pytest.fixture
@@ -172,22 +173,46 @@ def test_ShiftOfAsciiRange_RespondsWithSameMessage(CaesarCipherServerFixture):
     response = None
 
     try:
-        sock.sendall(b'128 abcdefghijklmnopqrstuvwxyz ')
+        sock.sendall(b'128 ' + string.ascii_lowercase + ' ')
         response = sock.recv(1024)
     except socket.error, e:
         pass
 
-    assert response == 'abcdefghijklmnopqrstuvwxyz '
+    assert response == string.ascii_lowercase + ' '
 
 def test_ShiftOfAsciiRangePlusOne_RespondsWithTheMessagePlusOne(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
     response = None
 
     try:
-        sock.sendall(b'129 abcdefghijklmnopqrstuvwxyz ')
+        sock.sendall(b'129 ' + string.ascii_lowercase + ' ')
         response = sock.recv(1024)
     except socket.error, e:
         pass
 
     assert response == 'bcdefghijklmnopqrstuvwxyz{ '
+
+def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectly(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    message = ''
+    response = ''
+    expected_response = ''
+
+    for idx in range(30000):
+        message +=  '129 ' + string.ascii_lowercase + ' '
+        expected_response += string.ascii_lowercase[1:] + '{ '
+
+    try:
+        sock.sendall(message.encode())
+        
+        while True:
+            partial_response = sock.recv(1024)
+            if not partial_response:
+                break
+            response += partial_response
+
+    except socket.error, e:
+        pass
+
+    assert response == expected_response
 
