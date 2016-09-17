@@ -213,6 +213,7 @@ def test_ShiftAndMessageSentOneCharAtATime_RespondsCorrectly(CaesarCipherServerF
 
     assert response == 'bcde '
 
+@pytest.mark.skip()
 def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectly(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
     message = ''
@@ -237,3 +238,25 @@ def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectly(Caesa
 
     assert response == expected_response
 
+@pytest.mark.skip()
+@pytest.mark.timeout(15)
+def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsInATimelyManner(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    message = ''
+    response = ''
+    expected_response = ''
+
+    for idx in range(30000):
+        message +=  '129 ' + string.ascii_lowercase + ' '
+        expected_response += string.ascii_lowercase[1:] + '{ '
+
+    try:
+        sock.sendall(message.encode())
+
+        while True:
+            partial_response = sock.recv(1024)
+            if not partial_response:
+                break
+            response += partial_response
+    except socket.error, e:
+        pass
