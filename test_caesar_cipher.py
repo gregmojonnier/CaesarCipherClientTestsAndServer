@@ -40,3 +40,11 @@ def test_GenerateCaesarCipher_ShiftOfNegativeAsciiRangeMinusThree_ReturnsMessage
 
 def test_GenerateCaesarCipher_LargerRandomMessageAndShift_ReturnsCorrectMessage():
     assert GenerateCaesarCipher('GHIJKLMNOP', 7) == 'NOPQRSTUVW'
+
+def test_GenerateCaesarCipher_ExtremelyLargeShift_ReturnsCorrectMessage():
+    large_shift_thats_equivalent_to_zero = 128 * 10
+    assert GenerateCaesarCipher('abcd', large_shift_thats_equivalent_to_zero) == 'abcd'
+
+def test_GenerateCaesarCipher_ExtremelyLargeNegativeOneShift_ReturnsCorrectMessage():
+    large_shift_thats_equivalent_to_zero = -((128 * 10) + 1)
+    assert GenerateCaesarCipher('bcd', large_shift_thats_equivalent_to_zero) == 'abc'

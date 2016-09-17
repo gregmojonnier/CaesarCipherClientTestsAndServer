@@ -1,5 +1,4 @@
-_LAST_ASCII_CHAR = 127
-_FIRST_ASCII_CHAR = 0
+_ASCII_RANGE = 128
 
 def GenerateCaesarCipher(message, shift):
     """Generates a caesar cipher for a given message based on the given shift.
@@ -20,13 +19,7 @@ def GenerateCaesarCipher(message, shift):
     ret = ""
 
     for i in message:
-        future_value = ord(i) + shift
-
-        if future_value > _LAST_ASCII_CHAR:
-            future_value = (future_value - _LAST_ASCII_CHAR) - 1
-        elif future_value < _FIRST_ASCII_CHAR:
-            future_value = (future_value + _LAST_ASCII_CHAR) + 1
-
+        future_value = (ord(i) + shift) % _ASCII_RANGE
         ret += chr(future_value)
 
     return ret

@@ -192,6 +192,27 @@ def test_ShiftOfAsciiRangePlusOne_RespondsWithTheMessagePlusOne(CaesarCipherServ
 
     assert response == 'bcdefghijklmnopqrstuvwxyz{ '
 
+def test_ShiftAndMessageSentOneCharAtATime_RespondsCorrectly(CaesarCipherServerFixture):
+    sock = CaesarCipherServerFixture._sock
+    response = None
+    message = 'abcd'
+    shift = str((128 * 3) + 1) # shift 1
+
+    try:
+        for digit in shift:
+            sock.sendall(digit.encode())
+        sock.sendall(' '.encode())
+
+        for char in message:
+            sock.sendall(char.encode())
+        sock.sendall(' '.encode())
+
+        response = sock.recv(1024)
+    except socket.error, e:
+        pass
+
+    assert response == 'bcde '
+
 def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectly(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
     message = ''
