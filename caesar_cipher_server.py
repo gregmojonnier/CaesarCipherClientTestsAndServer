@@ -1,18 +1,17 @@
 import socket
 import select
 import enum
+import argparse
 from caesar_cipher import GenerateCaesarCipher
 
 class AwaitingState(enum.Enum):
     ShiftAmount = 1
     Message = 2
 
-def handle_connection(conn, addr):
+def handle_incoming_connection(conn, addr):
     try:
         conn.setblocking(0)
         print('connection from ', addr)
-        waiting_for_shift = True
-        message = ''
         read_timeouts = 0
         inputs = [conn]
 
@@ -32,8 +31,6 @@ def handle_connection(conn, addr):
                 else:
                     print('out of timeouts')
                     return
-            else:
-                print('was ready')
 
             data = conn.recv(1024)
             if not data:
@@ -106,20 +103,22 @@ def handle_connection(conn, addr):
             print('closed connection')
 
 
-def start():
-    HOST = ''
-    PORT = 55555
-
+def start_server(port):
+    print('about to accept, listening on', port)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    s.bind((HOST, PORT))
-    s.listen(1)
+    HOST = ''
+    s.bind((HOST, port))
+    s.listen(1) # TODO: bump up to 5 queued connections allowed?
     while True:
-        print('about to accept, listening on', PORT)
         (conn, addr) = s.accept()
-        handle_connection(conn, addr)
+        handle_incoming_connection(conn, addr)
 
 
 if __name__ == '__main__':
-    start()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('port')
+    args = parser.parse_args()
+
+    start_server(int(args.port))
