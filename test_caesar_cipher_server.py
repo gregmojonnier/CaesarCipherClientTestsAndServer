@@ -3,6 +3,8 @@ import select
 import time
 import pytest
 import string
+import os
+from multiprocessing import Process, Manager
 
 
 @pytest.fixture
@@ -63,7 +65,7 @@ def test_ClientsFirstWordIsANumberAndSecondHasTrailingSpace_ServerRespondsWithMe
     response = None
 
     try:
-        sock.sendall(b'666 message ')
+        sock.sendall(b'123 message ')
         response = sock.recv(1024)
     except socket.error, e:
         pass
@@ -260,3 +262,50 @@ def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsInATimelyManner
             response += partial_response
     except socket.error, e:
         pass
+
+def NewProcessCipherRequester(request_message, result):
+    """Function to be run in a new process that
+       connects to server and sends request_message
+       storing the pid -> answer in result. """
+
+    _host = '127.0.0.1'
+    _server_port = 55555
+    sock = None
+    response = ''
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((_host, _server_port))
+
+        sock.sendall(request_message.encode())
+        sock.sendall(b'')
+        result[os.getpid()] = sock.recv(1024)
+    except Exception:
+        pass
+    sock.shutdown(socket.SHUT_RDWR)
+    sock.close()
+
+def test_MultipleClientsConcurrently_RespondsToAllCorrectly(CaesarCipherServerFixture):
+    manager = Manager()
+    shared_dict = manager.dict()
+    total_clients = 6
+    clients = []
+
+    shift_one_alphabet_request = '1 ' + string.ascii_lowercase + ' '
+    expected_result = string.ascii_lowercase[1:] + '{ '
+
+    for i in range(total_clients):
+        clients.append(Process(target=NewProcessCipherRequester, args=(shift_one_alphabet_request, shared_dict,)))
+
+    for client in clients:
+        client.start()
+
+    for client in clients:
+        client.join(10)
+        if client.is_alive():
+            client.terminate()
+
+    assert len(shared_dict) == total_clients, 'Did not get an answer from all concurrent clients'
+
+    for pid, pids_result in shared_dict.items():
+        assert pids_result == expected_result, 'Process ' + str(pid) + '\'s ciphered message was incorrect.'
