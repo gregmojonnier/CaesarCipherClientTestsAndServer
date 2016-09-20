@@ -4,6 +4,7 @@ import time
 import pytest
 import string
 import os
+from timeit import default_timer as timer
 from multiprocessing import Process, Manager
 
 
@@ -215,46 +216,17 @@ def test_ShiftAndMessageSentOneCharAtATime_RespondsCorrectly(CaesarCipherServerF
 
     assert response == 'bcde '
 
-@pytest.mark.skip()
-def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectly(CaesarCipherServerFixture):
+def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectlyAndQuickly(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
-    message = ''
-    response = ''
-    expected_response = ''
-
-    for idx in range(30000):
+    message, response, expected_response = '', '', ''
+    start_time, end_time = 0, 0
+    for idx in range(10000):
         message +=  '129 ' + string.ascii_lowercase + ' '
         expected_response += string.ascii_lowercase[1:] + '{ '
 
+    start_time = timer()
     try:
         sock.sendall(message.encode())
-        
-        while True:
-            partial_response = sock.recv(1024)
-            if not partial_response:
-                break
-            response += partial_response
-
-    except socket.error, e:
-        pass
-
-    assert response == expected_response
-
-@pytest.mark.skip()
-@pytest.mark.timeout(15)
-def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsInATimelyManner(CaesarCipherServerFixture):
-    sock = CaesarCipherServerFixture._sock
-    message = ''
-    response = ''
-    expected_response = ''
-
-    for idx in range(30000):
-        message +=  '129 ' + string.ascii_lowercase + ' '
-        expected_response += string.ascii_lowercase[1:] + '{ '
-
-    try:
-        sock.sendall(message.encode())
-
         while True:
             partial_response = sock.recv(1024)
             if not partial_response:
@@ -262,37 +234,19 @@ def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsInATimelyManner
             response += partial_response
     except socket.error, e:
         pass
+    end_time = timer()
+    response_time = end_time - start_time
 
-def NewProcessCipherRequester(request_message, result):
-    """Function to be run in a new process that
-       connects to server and sends request_message
-       storing the pid -> answer in result. """
+    assert response == expected_response, 'Extremely large message response was not correct!'
+    assert response_time < 2, 'Extremely large message response was not fast enough!'
 
-    _host = '127.0.0.1'
-    _server_port = 55555
-    sock = None
-    response = ''
-
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((_host, _server_port))
-
-        sock.sendall(request_message.encode())
-        sock.sendall(b'')
-        result[os.getpid()] = sock.recv(1024)
-    except Exception:
-        pass
-    sock.shutdown(socket.SHUT_RDWR)
-    sock.close()
-
-def test_MultipleClientsConcurrently_RespondsToAllCorrectly(CaesarCipherServerFixture):
+def test_TenClientsConcurrently_RespondsToAllCorrectlyAndQuickly(CaesarCipherServerFixture):
     manager = Manager()
     shared_dict = manager.dict()
-    total_clients = 6
+    total_clients = 10
     clients = []
-
     shift_one_alphabet_request = '1 ' + string.ascii_lowercase + ' '
-    expected_result = string.ascii_lowercase[1:] + '{ '
+    expected_response = string.ascii_lowercase[1:] + '{ '
 
     for i in range(total_clients):
         clients.append(Process(target=NewProcessCipherRequester, args=(shift_one_alphabet_request, shared_dict,)))
@@ -301,11 +255,36 @@ def test_MultipleClientsConcurrently_RespondsToAllCorrectly(CaesarCipherServerFi
         client.start()
 
     for client in clients:
-        client.join(10)
+        client.join(30)
         if client.is_alive():
             client.terminate()
 
-    assert len(shared_dict) == total_clients, 'Did not get an answer from all concurrent clients'
-
+    assert len(shared_dict) == total_clients, 'Did not get an answer from all concurrent clients in the allotted time.'
+    avg_response_time = 0
     for pid, pids_result in shared_dict.items():
-        assert pids_result == expected_result, 'Process ' + str(pid) + '\'s ciphered message was incorrect.'
+        response, response_time = pids_result
+        avg_response_time += response_time
+        assert response == expected_response, 'Process ' + str(pid) + '\'s ciphered message was incorrect.'
+    avg_response_time /= total_clients
+    assert avg_response_time < 1.5, 'Average response time from ' + str(total_clients) + ' concurrent clients was not fast enough!'
+
+def NewProcessCipherRequester(request_message, result):
+    """Function to be run in a new process that
+       connects to server and sends request_message
+       storing the pid -> (answer, response_time) in result. """
+
+    _host = '127.0.0.1'
+    _server_port = 55555
+    sock = None
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((_host, _server_port))
+
+        start_time = timer()
+        sock.sendall(request_message.encode())
+        result[os.getpid()] = (sock.recv(1024), (timer() - start_time))
+    except Exception:
+        pass
+    sock.shutdown(socket.SHUT_RDWR)
+    sock.close()

@@ -22,7 +22,7 @@ def handle_incoming_connection(conn, addr):
         incomplete_message = ''
         while True:
             print('about to select')
-            readable, writable, exceptional = select.select(inputs, [], [], 2)
+            readable, writable, exceptional = select.select(inputs, [], [], 1)
             if not readable:
                 if read_timeouts < 2:
                     print('timeout num ', read_timeouts)
