@@ -7,21 +7,21 @@ import os
 from timeit import default_timer as timer
 from multiprocessing import Process, Manager
 
+_host = '127.0.0.1'
+_server_port = 55555
 
 @pytest.fixture
 def CaesarCipherServerFixture(request):
     class TestInfo:
-        _host = '127.0.0.1'
-        _server_port = 55555
         _sock = None
 
         def __init__(self):
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
-                self._sock.connect((self._host, self._server_port))
+                self._sock.connect((_host, _server_port))
             except Exception as e:
                 assert False, 'Unable to connect to server on port ' + \
-                    str(self._server_port) + ', exception: ' + str(e)
+                    str(_server_port) + ', exception: ' + str(e)
 
     t = TestInfo()
 
@@ -272,9 +272,6 @@ def NewProcessCipherRequester(request_message, result):
     """Function to be run in a new process that
        connects to server and sends request_message
        storing the pid -> (answer, response_time) in result. """
-
-    _host = '127.0.0.1'
-    _server_port = 55555
     sock = None
 
     try:
