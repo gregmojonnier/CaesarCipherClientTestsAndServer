@@ -110,7 +110,7 @@ def start_server(port):
 
     HOST = ''
     s.bind((HOST, port))
-    s.listen(1) # TODO: bump up to 5 queued connections allowed?
+    s.listen(5)
     while True:
         (conn, addr) = s.accept()
         handle_incoming_connection(conn, addr)
