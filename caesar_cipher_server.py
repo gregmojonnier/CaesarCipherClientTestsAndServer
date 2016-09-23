@@ -67,7 +67,7 @@ def handle_incoming_connection(conn, addr):
                             shift_amount = -int(number_portion)
 
                         print('shift amount received', shift_amount)
-                        
+
                         waiting_for = AwaitingState.Message
                 elif waiting_for == AwaitingState.Message:
                     incomplete_message += word
@@ -103,17 +103,25 @@ def handle_incoming_connection(conn, addr):
             print('closed connection')
 
 
-def start_server(port):
-    print('about to accept, listening on', port)
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+class CaesarCipherServer:
+    def __init__(self, port):
+        self._port = port
 
-    HOST = ''
-    s.bind((HOST, port))
-    s.listen(5)
-    while True:
-        (conn, addr) = s.accept()
-        handle_incoming_connection(conn, addr)
+    def rrun(self):
+        self._sock = self._create_port_listener()
+        while True:
+            (conn, addr) = self._sock.accept()
+            handle_incoming_connection(conn, addr)
+
+    def _create_port_listener(self):
+        print('about to accept, listening on', self._port)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        HOST = ''
+        s.bind((HOST, self._port))
+        s.listen(5)
+        return s
 
 
 if __name__ == '__main__':
@@ -121,4 +129,5 @@ if __name__ == '__main__':
     parser.add_argument('port')
     args = parser.parse_args()
 
-    start_server(int(args.port))
+    server = CaesarCipherServer(int(args.port))
+    server.rrun()
