@@ -10,6 +10,10 @@ class CaesarCipherServer:
     Returns an encoded caesar cipher to the user.
     '''
 
+    class AwaitingState(enum.Enum):
+        '''Used to track state of how the server will interpret current(or next) incoming contiguous segment of text.'''
+        ShiftAmount = 1
+        Message = 2
 
     def __init__(self, port):
         self._port = port
@@ -32,95 +36,33 @@ class CaesarCipherServer:
         s.listen(5)
         return s
 
-    class AwaitingState(enum.Enum):
-        '''Tracks the state of how the server will interpret the incoming contiguous segment of text.'''
-        ShiftAmount = 1
-        Message = 2
-
     def _handle_incoming_connection(self, conn, addr):
-        '''Handles parsing and responding to a connection's incoming caesar cipher encodings requests.
-        Expected Incoming Message Format:
-            "shift message "
-        A space signifies completion of a shift or message word. Spaces are not allowed in messages.
+        '''High level entry point to parsing and responding to a connection's incoming caesar cipher encodings requests.
 
-        Expected Outgoing Message Format:
-            "encoded_message "
-        A trailing space is sent with the encoded_message.
+            Expected Incoming Message Format:
+                "shift message "
+            A space signifies completion of a shift or message word. Spaces are not allowed in messages.
+
+            Expected Outgoing Message Format:
+                "encoded_message "
+            A trailing space is sent with the encoded_message.
         '''
 
         try:
             print('connection from ', addr)
-            waiting_for = self.AwaitingState(self.AwaitingState.ShiftAmount)
-            complete_ciphers_to_send = []
-            shift_amount = 0
-            incomplete_shift_amount = ''
-            incomplete_message = ''
+            waiting_state = self.AwaitingState(self.AwaitingState.ShiftAmount)
+            unprocessed_remainder = ''
             while True:
-                try:
-                    full_data_string = self._wait_for_data_string(conn)
-                except TimeoutError as e:
-                    print(e)
-                    return
-                except ConnectionAbortedError as e:
-                    print(e)
-                    return
-
-                print('incoming message ', full_data_string, '\n')
-
-                split_words = full_data_string.split(' ')
-                num_words = len(split_words)
-                print('split incoming message ', split_words, '\n')
-
-                for idx, word in enumerate(split_words):
-                    word_followed_by_space = idx < num_words-1
-                    if waiting_for == self.AwaitingState.ShiftAmount:
-                        incomplete_shift_amount += word
-                        if word_followed_by_space:
-                            is_negative = incomplete_shift_amount.startswith('-')
-
-                            if not is_negative:
-                                if not incomplete_shift_amount.isnumeric():
-                                    print('not numeric number given\n')
-                                    conn.shutdown(socket.SHUT_RDWR)
-                                    break
-                                shift_amount = int(incomplete_shift_amount)
-                            else:
-                                number_portion = incomplete_shift_amount[1:]
-                                if not number_portion.isnumeric():
-                                    print('not numeric number given\n')
-                                    conn.shutdown(socket.SHUT_RDWR)
-                                    break
-                                shift_amount = -int(number_portion)
-
-                            print('shift amount received', shift_amount)
-
-                            waiting_for = self.AwaitingState.Message
-                    elif waiting_for == self.AwaitingState.Message:
-                        incomplete_message += word
-
-                        if word_followed_by_space:
-                            print('entire message received', incomplete_message)
-                            complete_ciphers_to_send.append(GenerateCaesarCipher(incomplete_message, shift_amount))
-                            print('recorded cipher, total', complete_ciphers_to_send)
-
-                            waiting_for = self.AwaitingState.ShiftAmount
-                            shift_amount = 0
-                            # reset waits
-                            incomplete_shift_amount = ''
-                            incomplete_message = ''
-
-                full_response_message = ''
-                for cipher in complete_ciphers_to_send:
-                    full_response_message += cipher + ' '
-                    print('appended to full message string, total', full_response_message)
-
-                if full_response_message:
-                    print('sending full message')
-                    conn.sendall(full_response_message.encode())
-                    complete_ciphers_to_send = []
-
-        except socket.timeout:
-            print('Timed out')
+                new_incomplete_data = self._wait_for_data_string(conn)
+                (complete_requests, unprocessed_remainder, waiting_state) = self._parse_complete_messages(waiting_state, unprocessed_remainder, new_incomplete_data)
+                ciphers = self._perform_cipher(complete_requests)
+                self._send_completed_ciphers(ciphers, conn)
+        except TimeoutError as e:
+            print(e) # No data from client in X seconds
+        except ConnectionAbortedError as e:
+            print(e) # Client closed connection
+        except ValueError as e:
+            print(e) # Given an invalid shift(Not an integer)
         except Exception as e:
             print(e)
         finally:
@@ -129,6 +71,10 @@ class CaesarCipherServer:
                 print('closed connection')
 
     def _wait_for_data_string(self, conn):
+        '''Waits for data from a connection, returning any received data as a string.
+        Throws TimeoutError after 2 seconds.
+        Throws ConnectionAbortedError upon disconnection
+        '''
         inputs = [conn]
         for read_attempt in range(0, 2):
             readable, writable, exceptional = select.select(inputs, [], [], 1)
@@ -144,6 +90,94 @@ class CaesarCipherServer:
                 return data.decode()
         return ''
 
+    def _parse_complete_messages(self, waiting_state, old_incomplete_data, new_incomplete_data):
+        '''
+        '''
+        old_split_words = old_incomplete_data.split(' ') if old_incomplete_data else []
+        split_words = new_incomplete_data.split(' ') if new_incomplete_data else []
+
+        print('old data ', old_incomplete_data, '\n')
+        print('new data ', new_incomplete_data, '\n')
+        print('split message ', split_words, '\n')
+
+        complete_ciphers = {}
+        shift, message = '', ''
+        for idx, word in enumerate(old_split_words):
+            if idx == 0:
+                shift = word
+            elif idx == 1:
+                message = word
+
+        last_word_idx = len(split_words) - 1
+        for idx, word in enumerate(split_words):
+            if waiting_state == self.AwaitingState.ShiftAmount:
+                shift += word
+            elif waiting_state == self.AwaitingState.Message:
+                message += word
+
+            complete_word = idx < last_word_idx
+            if complete_word:
+                if waiting_state == self.AwaitingState.ShiftAmount:
+                    waiting_state = self.AwaitingState.Message
+                elif waiting_state == self.AwaitingState.Message:
+                    waiting_state = self.AwaitingState.ShiftAmount
+                    complete_ciphers[idx] = (shift, message)
+                    print('completed request ', complete_ciphers)
+                    shift, message = '', ''
+
+        unprocessed_remainder = ''
+        if shift:
+            unprocessed_remainder += shift
+            if waiting_state == self.AwaitingState.Message:
+                unprocessed_remainder += ' '
+
+        if message:
+            unprocessed_remainder += message
+
+        print('unprocessed remainder ', unprocessed_remainder)
+
+        return (complete_ciphers, unprocessed_remainder, waiting_state)
+
+
+    def _perform_cipher(self, complete_requests):
+        '''Given a dictionary of complete requests, i.e. idx -> (shift, message)
+           Validates the request, makes sure shift is an integer, throws ValueError otherwise.
+           Then performs the requested caesar cipher returning a list of the ciphers.
+        '''
+        ciphers = []
+
+        for idx, request in complete_requests.items():
+            (shift, message) = request
+
+            unvalidated_shift = shift
+            is_negative = unvalidated_shift.startswith('-')
+            if is_negative:
+                unvalidated_shift = unvalidated_shift[1:]
+
+            if not unvalidated_shift.isnumeric():
+                raise ValueError('Given an invalid shift to apply to message. ' + shift + ' ' + message)
+
+            if is_negative:
+                shift = -int(unvalidated_shift)
+            else:
+                shift = int(unvalidated_shift)
+
+            ciphers.append(GenerateCaesarCipher(message, shift))
+
+        return ciphers
+
+    def _send_completed_ciphers(self, ciphers, conn):
+        '''Constructs a string response message containing the given ciphers separated by spaces,
+           and sends it to the given connection.
+        '''
+        full_response_message = ''
+        for cipher in ciphers:
+            full_response_message += cipher + ' '
+            print('appended to full message string, total', full_response_message)
+
+        if full_response_message:
+            print('sending full message')
+            conn.sendall(full_response_message.encode())
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
