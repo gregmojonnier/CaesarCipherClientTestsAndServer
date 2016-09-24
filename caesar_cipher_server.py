@@ -53,8 +53,8 @@ class CaesarCipherServer:
             waiting_state = self.AwaitingState(self.AwaitingState.ShiftAmount)
             unprocessed_remainder = ''
             while True:
-                new_incomplete_data = self._wait_for_data_string(conn)
-                (complete_requests, unprocessed_remainder, waiting_state) = self._parse_complete_messages(waiting_state, unprocessed_remainder, new_incomplete_data)
+                new_unprocessed_data = self._wait_for_data_string(conn)
+                (complete_requests, unprocessed_remainder, waiting_state) = self._parse_complete_requests(waiting_state, unprocessed_remainder, new_unprocessed_data)
                 ciphers = self._perform_cipher(complete_requests)
                 self._send_completed_ciphers(ciphers, conn)
         except TimeoutError as e:
@@ -90,16 +90,28 @@ class CaesarCipherServer:
                 return data.decode()
         return ''
 
-    def _parse_complete_messages(self, waiting_state, old_incomplete_data, new_incomplete_data):
-        '''
-        '''
-        old_split_words = old_incomplete_data.split(' ') if old_incomplete_data else []
-        split_words = new_incomplete_data.split(' ') if new_incomplete_data else []
+    def _parse_complete_requests(self, waiting_state, old_unprocessed_data, new_unprocessed_data):
+        '''Iterates through words of incoming data parsing them into complete requests(shift, message).
+            Expected Complete request format:
+                "shift message "
+            A space signifies completion of a shift or message word. Spaces are not allowed in messages.
 
-        print('old data ', old_incomplete_data, '\n')
-        print('new data ', new_incomplete_data, '\n')
-        print('split message ', split_words, '\n')
+            Receives:   (AwaitingState) - how to interpret current word
+                        (string) - old unprocessed data, i.e. an incomplete request
+                        (string) - new unprocessed data, fresh data which should hopefully complete the request + more
 
+            Returns: (dictionary) - completed requests, idx(maintains ordering) -> (shift, message)
+                     (string) - unprocessed data, incomplete request that should get passed back into this on next call
+                     (AwaitingState) - how to interpret current word after iterating through the new data
+        '''
+        old_split_words = old_unprocessed_data.split(' ') if old_unprocessed_data else []
+        new_split_words = new_unprocessed_data.split(' ') if new_unprocessed_data else []
+
+        print('old data ', old_unprocessed_data, '\n')
+        print('new data ', new_unprocessed_data, '\n')
+        print('split message ', new_split_words, '\n')
+
+        # Unpack old unprocessed shift and message
         complete_ciphers = {}
         shift, message = '', ''
         for idx, word in enumerate(old_split_words):
@@ -108,23 +120,28 @@ class CaesarCipherServer:
             elif idx == 1:
                 message = word
 
-        last_word_idx = len(split_words) - 1
-        for idx, word in enumerate(split_words):
+        # Interpret the new words recording complete requests in the process
+        last_word_idx = len(new_split_words) - 1
+        for idx, word in enumerate(new_split_words):
             if waiting_state == self.AwaitingState.ShiftAmount:
                 shift += word
             elif waiting_state == self.AwaitingState.Message:
                 message += word
 
+            # Complete word are those followed by a space
             complete_word = idx < last_word_idx
             if complete_word:
                 if waiting_state == self.AwaitingState.ShiftAmount:
                     waiting_state = self.AwaitingState.Message
                 elif waiting_state == self.AwaitingState.Message:
                     waiting_state = self.AwaitingState.ShiftAmount
+                    # Current request is now complete as we have both shift + message
                     complete_ciphers[idx] = (shift, message)
                     print('completed request ', complete_ciphers)
                     shift, message = '', ''
 
+        # Record what hasn't been processed yet so we can take it into account during the next
+        # flow of incoming data
         unprocessed_remainder = ''
         if shift:
             unprocessed_remainder += shift
