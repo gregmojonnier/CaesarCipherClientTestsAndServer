@@ -50,33 +50,21 @@ class CaesarCipherServer:
 
         try:
             print('connection from ', addr)
-            read_timeouts = 0
-            inputs = [conn]
-
             waiting_for = self.AwaitingState(self.AwaitingState.ShiftAmount)
             complete_ciphers_to_send = []
             shift_amount = 0
             incomplete_shift_amount = ''
             incomplete_message = ''
             while True:
-                print('about to select')
-                readable, writable, exceptional = select.select(inputs, [], [], 1)
-                if not readable:
-                    if read_timeouts < 2:
-                        print('timeout num ', read_timeouts)
-                        read_timeouts += 1
-                        continue
-                    else:
-                        print('out of timeouts')
-                        return
-
-                data = conn.recv(1024)
-                if not data:
-                    print('no data, returning')
-                    # no such thing as empty message peer disconnected
+                try:
+                    full_data_string = self._wait_for_data_string(conn)
+                except TimeoutError as e:
+                    print(e)
+                    return
+                except ConnectionAbortedError as e:
+                    print(e)
                     return
 
-                full_data_string = data.decode()
                 print('incoming message ', full_data_string, '\n')
 
                 split_words = full_data_string.split(' ')
@@ -140,6 +128,21 @@ class CaesarCipherServer:
                 conn.close()
                 print('closed connection')
 
+    def _wait_for_data_string(self, conn):
+        inputs = [conn]
+        for read_attempt in range(0, 2):
+            readable, writable, exceptional = select.select(inputs, [], [], 1)
+            if not readable:
+                if read_attempt >= 1:
+                    raise TimeoutError('No messages for 2 seconds.')
+            else:
+                data = conn.recv(1024)
+                if not data:
+                    # no such thing as empty message peer disconnected
+                    raise ConnectionAbortedError('Peer disconnected.')
+
+                return data.decode()
+        return ''
 
 
 if __name__ == '__main__':
