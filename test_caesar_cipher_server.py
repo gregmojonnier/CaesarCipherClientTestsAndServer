@@ -204,10 +204,12 @@ def test_ShiftAndMessageSentOneCharAtATime_RespondsCorrectly(CaesarCipherServerF
     try:
         for digit in shift:
             sock.sendall(digit.encode())
+            time.sleep(1)
         sock.sendall(' '.encode())
 
         for char in message:
             sock.sendall(char.encode())
+            time.sleep(1)
         sock.sendall(' '.encode())
 
         response = sock.recv(1024)
