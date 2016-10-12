@@ -159,17 +159,17 @@ def test_ShiftOfNegativeOneSingleCharMessage_ServerRespondsWithCharShiftedNegati
 
     assert response == 'a '
 
-def test_ShiftOfNegativeOneWithFirstAsciiCharMessage_RespondsWithLastAsciiChar(CaesarCipherServerFixture):
+def test_NegativeShiftWhichGoesBelowFirstAsciiChar_ShiftLoopsAroundAndContinuesFromTheLastAsciiChar(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
     response = None
 
     try:
-        sock.sendall(b'-1 \x00 ')
+        sock.sendall(b'-128 abc123 ')
         response = sock.recv(1024)
     except socket.error, e:
         pass
 
-    assert response == '\x7f '
+    assert response == 'abc123 '
 
 def test_ShiftOfAsciiRange_RespondsWithSameMessage(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
