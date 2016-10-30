@@ -9,6 +9,11 @@ from multiprocessing import Process, Manager
 
 _host = '127.0.0.1'
 _server_port = 55555
+# generate really large message and expected response once for all tests in module
+really_large_msg, really_large_msg_response = '', ''
+for idx in range(10000):
+    really_large_msg +=  '129 ' + string.ascii_lowercase + ' '
+    really_large_msg_response += string.ascii_lowercase[1:] + '{ '
 
 @pytest.fixture
 def CaesarCipherServerFixture(request):
@@ -22,6 +27,9 @@ def CaesarCipherServerFixture(request):
             except Exception as e:
                 assert False, 'Unable to connect to server on port ' + \
                     str(_server_port) + ', exception: ' + str(e)
+
+        def get_large_message_and_expected_response(self):
+            return (really_large_msg, really_large_msg_response)
 
     t = TestInfo()
 
@@ -220,11 +228,9 @@ def test_ShiftAndMessageSentOneCharAtATime_RespondsCorrectly(CaesarCipherServerF
 
 def test_ExtremelyLargeMessageContainingMultipleRequests_RespondsCorrectlyAndQuickly(CaesarCipherServerFixture):
     sock = CaesarCipherServerFixture._sock
-    message, response, expected_response = '', '', ''
+    message, expected_response = CaesarCipherServerFixture.get_large_message_and_expected_response()
+    response = ''
     start_time, end_time = 0, 0
-    for idx in range(10000):
-        message +=  '129 ' + string.ascii_lowercase + ' '
-        expected_response += string.ascii_lowercase[1:] + '{ '
 
     start_time = timer()
     try:
@@ -247,11 +253,10 @@ def test_TenClientsConcurrently_RespondsToAllCorrectlyAndQuickly(CaesarCipherSer
     shared_dict = manager.dict()
     total_clients = 10
     clients = []
-    shift_one_alphabet_request = '1 ' + string.ascii_lowercase + ' '
-    expected_response = string.ascii_lowercase[1:] + '{ '
+    message, expected_response = CaesarCipherServerFixture.get_large_message_and_expected_response()
 
     for i in range(total_clients):
-        clients.append(Process(target=NewProcessCipherRequester, args=(shift_one_alphabet_request, shared_dict,)))
+        clients.append(Process(target=NewProcessCipherRequester, args=(message, shared_dict,)))
 
     for client in clients:
         client.start()
@@ -267,8 +272,9 @@ def test_TenClientsConcurrently_RespondsToAllCorrectlyAndQuickly(CaesarCipherSer
         response, response_time = pids_result
         avg_response_time += response_time
         assert response == expected_response, 'Process ' + str(pid) + '\'s ciphered message was incorrect.'
+
     avg_response_time /= total_clients
-    assert avg_response_time < 1.5, 'Average response time from ' + str(total_clients) + ' concurrent clients was not fast enough!'
+    assert avg_response_time < 2, 'Average response time from ' + str(total_clients) + ' concurrent clients was not fast enough!'
 
 def NewProcessCipherRequester(request_message, result):
     """Function to be run in a new process that
@@ -282,7 +288,15 @@ def NewProcessCipherRequester(request_message, result):
 
         start_time = timer()
         sock.sendall(request_message.encode())
-        result[os.getpid()] = (sock.recv(1024), (timer() - start_time))
+
+        response, partial_response = '', ''
+        while True:
+            partial_response = sock.recv(1024)
+            if not partial_response:
+                result[os.getpid()] = (response, (timer() - start_time))
+                break
+            response += partial_response
+
     except Exception:
         pass
     sock.shutdown(socket.SHUT_RDWR)
